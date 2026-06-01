@@ -89,8 +89,10 @@ _TEMPLATE = """<!DOCTYPE html>
   #legend .t { color:#d1d4dc; font-weight:600; }
   #numLayer { position:absolute; inset:0; overflow:hidden; pointer-events:none; z-index:3; }
   #numLayer span { position:absolute; font-size:12px; font-weight:700; white-space:nowrap; }
-  #numLayer .num-red { transform:translate(-50%,-100%); color:#e53935; }   /* 紅群在上方 */
-  #numLayer .num-black { transform:translate(-50%,0); color:#ffffff; }      /* 黑群在下方 */
+  #numLayer .num-red { transform:translate(-50%,-100%); color:#e53935; }    /* 紅線段順序編號(在上方) */
+  #numLayer .num-count { transform:translate(-50%,-100%); color:#ffd400; }  /* 紅線段計數器(黃色粗體,疊在編號上方) */
+  #numLayer .num-black { transform:translate(-50%,0); color:#ffffff; }      /* 黑線段編號(在下方) */
+  #numLayer .num-count-dn { transform:translate(-50%,0); color:#ffd400; }   /* 黑線段計數器(黃色粗體,疊在編號下方) */
 </style>
 </head>
 <body>
@@ -111,6 +113,13 @@ _TEMPLATE = """<!DOCTYPE html>
       <span class="lbl">漲跌</span>
       <button data-dir="red" class="active" title="顯示紅(關閉則隱藏紅)">紅</button>
       <button data-dir="black" class="active" title="顯示黑(關閉則隱藏黑)">黑</button>
+    </div>
+    <div class="grp" id="labelSel">
+      <span class="lbl">數字</span>
+      <button data-label="redSeq" class="active" title="紅K 紅色順序編號">紅K紅</button>
+      <button data-label="redCount" class="active" title="紅K 黃色計數器">紅K黃</button>
+      <button data-label="blackSeq" class="active" title="黑K 白色順序編號">黑K黑</button>
+      <button data-label="blackCount" class="active" title="黑K 黃色計數器">黑K黃</button>
     </div>
   </div>
 </header>
@@ -250,7 +259,7 @@ _TEMPLATE = """<!DOCTYPE html>
     setDefaultLegend();
   });
 
-  // ---- consecutive-run numbering (day session, from 08:45) ----
+  // ---- consecutive-run segments (day session, from 08:45) ----
   // Returns the LAST candle of each maximal run of the given direction.
   function runGroups(day, dir) {
     const out = [];
@@ -263,19 +272,48 @@ _TEMPLATE = """<!DOCTYPE html>
     if (runLast) out.push(runLast);
     return out;
   }
-  let curRedMarkers = [];   // numbered above (high)
-  let curBlackMarkers = []; // numbered below (low)
-  function placeNumbers(layer, ts, markers, above, cls) {
-    for (let i = 0; i < markers.length; i++) {
-      const m = markers[i];
+  // Red segments carry both a sequential number (seq) and a momentum counter:
+  // counter +1 when this segment's last close > previous red segment's last
+  // close, reset to 0 when lower, unchanged on equal; first segment is 0.
+  function buildRedMarkers(day) {
+    let counter = 0, prevClose = null;
+    return runGroups(day, 'red').map((c, i) => {
+      if (prevClose === null) counter = 0;
+      else if (c.close > prevClose) counter += 1;
+      else if (c.close < prevClose) counter = 0;
+      prevClose = c.close;
+      return { time: c.time, high: c.high, low: c.low,
+               seq: String(i + 1), counter: String(counter) };
+    });
+  }
+  // Black segments mirror red: counter +1 when this segment's last close <
+  // previous black segment's last close (lower low), reset to 0 when higher,
+  // unchanged on equal; first segment is 0.
+  function buildBlackMarkers(day) {
+    let counter = 0, prevClose = null;
+    return runGroups(day, 'black').map((c, i) => {
+      if (prevClose === null) counter = 0;
+      else if (c.close < prevClose) counter += 1;
+      else if (c.close > prevClose) counter = 0;
+      prevClose = c.close;
+      return { time: c.time, high: c.high, low: c.low,
+               seq: String(i + 1), counter: String(counter) };
+    });
+  }
+  let curRedMarkers = [];   // shown above (high)
+  let curBlackMarkers = []; // shown below (low)
+  const showLabel = { redSeq: true, redCount: true, blackSeq: true, blackCount: true };
+  function placeNumbers(layer, ts, markers, above, cls, key, dy) {
+    for (const m of markers) {
+      if (m[key] == null || m[key] === '0') continue;  // hide counter 0 (seq is 1-based)
       const x = ts.timeToCoordinate(m.time);
       const y = candleSeries.priceToCoordinate(above ? m.high : m.low);
       if (x == null || y == null) continue;
       const el = document.createElement('span');
       el.className = cls;
-      el.textContent = String(i + 1);
+      el.textContent = m[key];
       el.style.left = x + 'px';
-      el.style.top = (above ? y - 4 : y + 4) + 'px';
+      el.style.top = (y + dy) + 'px';
       layer.appendChild(el);
     }
   }
@@ -283,8 +321,10 @@ _TEMPLATE = """<!DOCTYPE html>
     const layer = document.getElementById('numLayer');
     layer.innerHTML = '';
     const ts = priceChart.timeScale();
-    placeNumbers(layer, ts, curRedMarkers, true, 'num-red');
-    placeNumbers(layer, ts, curBlackMarkers, false, 'num-black');
+    if (showLabel.redSeq)   placeNumbers(layer, ts, curRedMarkers, true, 'num-red', 'seq', -4);
+    if (showLabel.redCount) placeNumbers(layer, ts, curRedMarkers, true, 'num-count', 'counter', -22);
+    if (showLabel.blackSeq) placeNumbers(layer, ts, curBlackMarkers, false, 'num-black', 'seq', 4);
+    if (showLabel.blackCount) placeNumbers(layer, ts, curBlackMarkers, false, 'num-count-dn', 'counter', 22);
   }
 
   // ---- date dropdown ----
@@ -313,8 +353,8 @@ _TEMPLATE = """<!DOCTYPE html>
     });
     // numbering only for visible direction(s) and not viewing night-only
     const dayOk = curSession !== 'night';
-    curRedMarkers = (dayOk && curDirs.has('red')) ? runGroups(day, 'red') : [];
-    curBlackMarkers = (dayOk && curDirs.has('black')) ? runGroups(day, 'black') : [];
+    curRedMarkers = (dayOk && curDirs.has('red')) ? buildRedMarkers(day) : [];
+    curBlackMarkers = (dayOk && curDirs.has('black')) ? buildBlackMarkers(day) : [];
 
     const range = priceChart.timeScale().getVisibleLogicalRange();
     candleSeries.setData(candleData);
@@ -353,6 +393,16 @@ _TEMPLATE = """<!DOCTYPE html>
         btn.classList.add('active');
       }
       applyFilter(false);
+    });
+  });
+
+  // 數字顯示/隱藏（可複選，即時切換不影響縮放）
+  document.querySelectorAll('#labelSel button').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const k = btn.dataset.label;
+      showLabel[k] = !showLabel[k];
+      btn.classList.toggle('active', showLabel[k]);
+      positionNumbers();
     });
   });
 
