@@ -64,6 +64,7 @@ _TEMPLATE = """<!DOCTYPE html>
 <html lang="zh-Hant">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1">
 <title>TX __TF__</title>
 <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
 <style>
@@ -103,6 +104,22 @@ _TEMPLATE = """<!DOCTYPE html>
   #numLayer .star-count { transform:translate(-50%,0); color:#4fc3f7; }             /* 低點星星計數器(在星星下方) */
   #numLayer .star-hi { transform:translate(-50%,-100%); color:#ff9800; font-size:13px; }  /* 高點轉折小星星(上方) */
   #numLayer .star-hi-count { transform:translate(-50%,-100%); color:#ff9800; }             /* 高點星星計數器(在星星上方) */
+
+  /* --- RWD: 手機/小螢幕 (桌機樣式不受影響) --- */
+  @media (max-width: 640px) {
+    header { padding:8px 10px; gap:8px; }
+    h1 { font-size:12px; flex:1 1 100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .controls { gap:8px; width:100%; justify-content:flex-start; }
+    .grp { gap:4px; flex-wrap:wrap; }
+    .grp .lbl { font-size:11px; }
+    .grp button, select { padding:7px 10px; font-size:13px; }
+    #strategies { padding:6px 10px; gap:6px; }
+    .strat { justify-content:flex-start; }
+    .strat-name { font-size:12px; }
+    #legend { font-size:11px; left:6px; top:6px; padding:4px 6px; line-height:1.6;
+              white-space:normal; max-width:calc(100vw - 12px); }
+    #legend .k { margin:0 1px 0 5px; }
+  }
 </style>
 </head>
 <body>
